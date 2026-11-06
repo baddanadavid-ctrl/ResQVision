@@ -59,6 +59,28 @@ def init_db():
             "ALTER TABLE incidents ADD COLUMN longitude REAL"
         )
 
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS rescue_teams (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            team_name TEXT NOT NULL,
+            specialization TEXT NOT NULL,
+            members INTEGER DEFAULT 0,
+            status TEXT DEFAULT 'Available'
+        )
+    """)
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS rescue_assignments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            incident_id INTEGER NOT NULL,
+            team_id INTEGER NOT NULL,
+            assigned_at TEXT NOT NULL,
+            status TEXT DEFAULT 'Assigned',
+            FOREIGN KEY (incident_id) REFERENCES incidents(id),
+            FOREIGN KEY (team_id) REFERENCES rescue_teams(id)
+        )
+    """)
+
     conn.commit()
     conn.close()
 
@@ -149,3 +171,153 @@ def update_incident_status(incident_id, new_status):
 
 # Initialize database
 init_db()
+
+def add_rescue_team(team_name, specialization, members):
+    conn = get_connection()
+
+    conn.execute("""
+        INSERT INTO rescue_teams
+        (team_name, specialization, members, status)
+        VALUES (?, ?, ?, 'Available')
+    """, (team_name, specialization, members))
+
+    conn.commit()
+    conn.close()
+
+
+def get_rescue_teams():
+    conn = get_connection()
+
+    teams = conn.execute(
+        "SELECT * FROM rescue_teams ORDER BY id DESC"
+    ).fetchall()
+
+    conn.close()
+
+    return [dict(team) for team in teams]
+
+
+def update_team_status(team_id, new_status):
+    allowed_statuses = ["Available", "Assigned", "Unavailable"]
+
+    if new_status not in allowed_statuses:
+        raise ValueError("Invalid team status")
+
+    conn = get_connection()
+
+    conn.execute(
+        "UPDATE rescue_teams SET status = ? WHERE id = ?",
+        (new_status, team_id)
+    )
+
+    conn.commit()
+    conn.close()
+
+  
+def assign_rescue_team(incident_id, team_id):
+    conn = get_connection()
+
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+
+        team = conn.execute(
+            "SELECT status FROM rescue_teams WHERE id = ?",
+            (team_id,)
+        ).fetchone()
+
+        if team is None:
+            raise ValueError("Rescue team not found.")
+
+        if team["status"] != "Available":
+            raise ValueError("This rescue team is not available.")
+
+        existing = conn.execute(
+            "SELECT id FROM rescue_assignments WHERE incident_id = ?",
+            (incident_id,)
+        ).fetchone()
+
+        if existing is not None:
+            raise ValueError("This incident already has an assignment.")
+
+        conn.execute("""
+            INSERT INTO rescue_assignments
+            (incident_id, team_id, assigned_at, status)
+            VALUES (?, ?, datetime('now'), 'Assigned')
+        """, (incident_id, team_id))
+
+        conn.execute(
+            "UPDATE rescue_teams SET status = 'Assigned' WHERE id = ?",
+            (team_id,)
+        )
+
+        conn.commit()
+
+    except Exception:
+        conn.rollback()
+        raise
+
+    finally:
+        conn.close()
+
+
+    conn.commit()
+    conn.close()
+
+
+def get_rescue_assignments():
+    conn = get_connection()
+
+    assignments = conn.execute("""
+        SELECT
+            rescue_assignments.id,
+            rescue_assignments.incident_id,
+            rescue_assignments.team_id,
+            rescue_assignments.assigned_at,
+            rescue_assignments.status,
+            incidents.title,
+            incidents.location,
+            incidents.severity,
+            rescue_teams.team_name,
+            rescue_teams.specialization
+        FROM rescue_assignments
+        JOIN incidents
+            ON rescue_assignments.incident_id = incidents.id
+        JOIN rescue_teams
+            ON rescue_assignments.team_id = rescue_teams.id
+        ORDER BY rescue_assignments.id DESC
+    """).fetchall()
+
+    conn.close()
+
+    return [dict(row) for row in assignments]
+
+def update_rescue_assignment(assignment_id, new_status):
+    allowed_statuses = ["Assigned", "In Progress", "Completed"]
+
+    if new_status not in allowed_statuses:
+        raise ValueError("Invalid assignment status")
+
+    conn = get_connection()
+
+    assignment = conn.execute(
+        "SELECT team_id FROM rescue_assignments WHERE id = ?",
+        (assignment_id,)
+    ).fetchone()
+
+    if assignment is None:
+        conn.close()
+        raise ValueError("Assignment not found")
+
+    conn.execute(
+        "UPDATE rescue_assignments SET status = ? WHERE id = ?",
+        (new_status, assignment_id)
+    )
+
+    if new_status == "Completed":
+        conn.execute(
+            "UPDATE rescue_teams SET status = 'Available' WHERE id = ?",
+            (assignment["team_id"],)
+        )
+
+    conn.commit()
+    conn.close()

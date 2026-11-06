@@ -1,3 +1,9 @@
+from io import BytesIO
+from xml.sax.saxutils import escape
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import A3, landscape
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 from streamlit_folium import st_folium
 from map_module import create_damage_map
 import streamlit as st
@@ -11,7 +17,13 @@ from priority import calculate_priority
 from database import (
     add_incident,
     get_incidents,
-    update_incident_status
+    update_incident_status,
+    add_rescue_team,
+    get_rescue_teams,
+    update_team_status,
+    assign_rescue_team,
+    get_rescue_assignments,
+    update_rescue_assignment
 )
 
 # PAGE CONFIGURATION
@@ -54,7 +66,8 @@ page = st.sidebar.radio(
         "Image Analysis",
         "Incident Reports",
         "Damage Map",
-        "Recovery Planning"
+        "Recovery Planning",
+        "Rescue Gap Detector"
     ]
 )
 
@@ -695,4 +708,369 @@ elif page == "Damage Map":
 
 elif page == "Recovery Planning":
     st.title("Recovery Planning")
-    st.info("Recovery recommendations will be implemented here.")
+    st.write("Prioritized recovery recommendations based on registered incidents.")
+
+    from recovery import generate_recovery_plan
+
+    incidents = get_incidents()
+    recovery_plans = generate_recovery_plan(incidents)
+
+    if not recovery_plans:
+        st.info("No incidents available. Register an incident first.")
+    else:
+        st.subheader("Recovery Priority Overview")
+
+        for plan in recovery_plans:
+            with st.expander(
+                f"{plan['priority']} - {plan['location']} "
+                f"({plan['disaster_type']})"
+            ):
+                col1, col2 = st.columns(2)
+
+                with col1:
+                    st.write("**Severity:**", plan["severity"])
+                    st.write("**Affected People:**", plan["affected_people"])
+                    st.write("**Inspection:**", plan["inspection"])
+                    st.write("**Recommended Action:**", plan["action"])
+
+                with col2:
+                    st.write("**Resource Level:**", plan["resource_level"])
+                    st.write("**Medical Support:**", plan["medical"])
+                    st.write("**Rescue Support:**", plan["rescue"])
+                    st.write("**Supplies:**", plan["supplies"])
+
+        st.success("Recovery plans generated successfully.")
+        report = pd.DataFrame(recovery_plans)
+
+        pdf_buffer = BytesIO()
+
+        doc = SimpleDocTemplate(
+            pdf_buffer,
+            pagesize=landscape(A3),
+            rightMargin=25,
+            leftMargin=25,
+            topMargin=25,
+            bottomMargin=25
+        )
+
+        styles = getSampleStyleSheet()
+
+        elements = []
+
+        elements.append(
+            Paragraph("ResQVision - Disaster Recovery Report", styles["Title"])
+        )
+        elements.append(Spacer(1, 15))
+
+        headers = [
+            "ID", "Location", "Disaster", "Severity",
+            "People", "Priority", "Inspection",
+            "Medical", "Rescue", "Supplies",
+            "Resource Level", "Recommended Action"
+        ]
+
+        data = [[Paragraph("<b>" + h + "</b>", styles["BodyText"]) for h in headers]]
+
+        for plan in recovery_plans:
+            values = [
+                plan["id"],
+                plan["location"],
+                plan["disaster_type"],
+                plan["severity"],
+                plan["affected_people"],
+                plan["priority"],
+                plan["inspection"],
+                plan["medical"],
+                plan["rescue"],
+                plan["supplies"],
+                plan["resource_level"],
+                plan["action"]
+            ]
+
+            data.append([
+                Paragraph(escape(str(value)), styles["BodyText"])
+                for value in values
+            ])
+
+        table = Table(
+    data,
+    colWidths=[
+        30, 75, 65, 55, 45, 60,
+        90, 50, 50, 50, 95, 145
+    ],
+    repeatRows=1
+)
+
+        table.setStyle(TableStyle([
+    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#142B52")),
+    ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+    ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#B8C2CC")),
+    ("VALIGN", (0, 0), (-1, -1), "TOP"),
+    ("FONTSIZE", (0, 0), (-1, -1), 8),
+    ("LEADING", (0, 0), (-1, -1), 10),
+    ("ROWBACKGROUNDS", (0, 1), (-1, -1),
+     [colors.whitesmoke, colors.HexColor("#EAF0F6")]),
+    ("PADDING", (0, 0), (-1, -1), 7)
+]))
+        elements.append(table)
+
+        doc.build(elements)
+
+        st.download_button(
+            label="Download Recovery Report (PDF)",
+            data=pdf_buffer.getvalue(),
+            file_name="ResQVision_Recovery_Report.pdf",
+            mime="application/pdf"
+        )
+        
+elif page == "Rescue Gap Detector":
+    st.title("🚨 Rescue Gap Detector")
+    st.write("Manage rescue teams and monitor their availability.")
+
+    st.subheader("Register a Rescue Team")
+
+    with st.form("rescue_team_form"):
+        team_name = st.text_input("Rescue Team Name")
+
+        specialization = st.selectbox(
+            "Team Specialization",
+            ["Flood", "Fire", "Medical", "Mountain", "General"]
+        )
+
+        members = st.number_input(
+            "Number of Team Members",
+            min_value=1,
+            max_value=500,
+            value=5,
+            step=1
+        )
+
+        submitted = st.form_submit_button("Register Rescue Team")
+
+        if submitted:
+            if team_name.strip():
+                add_rescue_team(
+                    team_name.strip(),
+                    specialization,
+                    int(members)
+                )
+                st.success("Rescue team registered successfully!")
+                st.rerun()
+            else:
+                st.error("Please enter a team name.")
+
+    st.divider()
+
+    st.subheader("Registered Rescue Teams")
+
+    teams = get_rescue_teams()
+
+    if teams:
+        st.dataframe(
+            pd.DataFrame(teams),
+            use_container_width=True,
+            hide_index=True
+        )
+    else:
+        st.info("No rescue teams registered yet.")
+        
+    st.divider()
+                
+    st.divider()
+
+    st.subheader("📊 Rescue Operations Overview")
+
+    all_teams = get_rescue_teams()
+    all_incidents = get_incidents()
+    all_assignments = get_rescue_assignments()
+
+    total_teams = len(all_teams)
+
+    available_count = sum(
+        1 for team in all_teams
+        if team["status"] == "Available"
+    )
+
+    assigned_count = sum(
+        1 for team in all_teams
+        if team["status"] == "Assigned"
+    )
+
+    assigned_ids = {
+        item["incident_id"] for item in all_assignments
+    }
+
+    unassigned_high_priority = sum(
+        1 for incident in all_incidents
+        if incident["severity"] in ["Critical", "High"]
+        and incident["id"] not in assigned_ids
+    )
+
+    col1, col2, col3, col4 = st.columns(4)
+
+    col1.metric("Total Teams", total_teams)
+    col2.metric("Available Teams", available_count)
+    col3.metric("Assigned Teams", assigned_count)
+    col4.metric("Unassigned High-Priority", unassigned_high_priority)
+    
+    st.subheader("🚨 Rescue Gap Detection")
+
+    incidents = get_incidents()
+    assignments = get_rescue_assignments()
+    teams = get_rescue_teams()
+
+    assigned_incident_ids = {
+        item["incident_id"] for item in assignments
+    }
+
+    unassigned_incidents = [
+        incident for incident in incidents
+        if incident["id"] not in assigned_incident_ids
+    ]
+
+    if not unassigned_incidents:
+        st.success("All registered incidents have a rescue team assignment.")
+    else:
+        st.warning(
+            f"{len(unassigned_incidents)} incident(s) "
+            "are waiting for rescue team assignment."
+        )
+
+        available_teams = [
+            team for team in teams
+            if team["status"] == "Available"
+        ]
+
+        specialization_match = {
+            "Flood": "Flood",
+            "Fire": "Fire",
+            "Earthquake": "Mountain",
+            "Landslide": "Mountain",
+            "Cyclone": "General"
+        }
+
+        for incident in unassigned_incidents:
+            with st.expander(
+                f"{incident['severity']} - "
+                f"{incident['location']} ({incident['disaster_type']})"
+            ):
+                st.write("**Incident:**", incident["title"])
+                st.write("**Affected people:**", incident["affected_people"])
+                st.write("**Severity:**", incident["severity"])
+
+                required = specialization_match.get(
+                    incident["disaster_type"], "General"
+                )
+
+                recommended = [
+                    team for team in available_teams
+                    if team["specialization"] == required
+                ]
+
+                if not recommended:
+                    recommended = [
+                        team for team in available_teams
+                        if team["specialization"] == "General"
+                    ]
+
+                if recommended:
+                    suggested_team = recommended[0]
+
+                    st.info(
+                        f"Suggested team: {suggested_team['team_name']} "
+                        f"({suggested_team['specialization']})"
+                    )
+
+                    team_options = {
+                        f"{team['team_name']} - {team['specialization']} "
+                        f"({team['members']} members)": team["id"]
+                        for team in available_teams
+                    }
+
+                    option_labels = list(team_options.keys())
+
+                    selected_label = st.selectbox(
+                        "Select rescue team",
+                        option_labels,
+                        key=f"team_select_{incident['id']}"
+                    )
+
+                    if st.button(
+                        "Assign Rescue Team",
+                        key=f"assign_{incident['id']}"
+                    ):
+                        assign_rescue_team(
+                            incident["id"],
+                            team_options[selected_label]
+                        )
+
+                        st.success("Rescue team assigned successfully!")
+                        st.rerun()
+
+                else:
+                    st.error(
+                        "No available rescue team. "
+                        "Register or make a team available first."
+                    )
+                
+    st.divider()
+
+    st.subheader("📋 Rescue Assignment Tracking")
+
+    assignments = get_rescue_assignments()
+
+    if not assignments:
+        st.info("No rescue assignments have been made yet.")
+
+    else:
+        total_assigned = len(assignments)
+        in_progress = sum(
+            1 for item in assignments
+            if item["status"] == "In Progress"
+        )
+        completed = sum(
+            1 for item in assignments
+            if item["status"] == "Completed"
+        )
+
+        col1, col2, col3 = st.columns(3)
+
+        col1.metric("Total Assignments", total_assigned)
+        col2.metric("In Progress", in_progress)
+        col3.metric("Completed", completed)
+
+        for item in assignments:
+            with st.expander(
+                f"{item['team_name']} - {item['location']} "
+                f"({item['status']})"
+            ):
+                st.write("**Incident:**", item["title"])
+                st.write("**Location:**", item["location"])
+                st.write("**Severity:**", item["severity"])
+                st.write("**Rescue Team:**", item["team_name"])
+                st.write("**Specialization:**", item["specialization"])
+
+                new_status = st.selectbox(
+                    "Update Assignment Status",
+                    ["Assigned", "In Progress", "Completed"],
+                    index=[
+                        "Assigned",
+                        "In Progress",
+                        "Completed"
+                    ].index(item["status"]),
+                    key=f"assignment_status_{item['id']}"
+                )
+
+                if st.button(
+                    "Update Status",
+                    key=f"update_assignment_{item['id']}"
+                ):
+                    update_rescue_assignment(
+                        item["id"],
+                        new_status
+                    )
+
+                    st.success("Assignment status updated!")
+                    st.rerun()
+
+
