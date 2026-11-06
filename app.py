@@ -1,3 +1,5 @@
+from streamlit_folium import st_folium
+from map_module import create_damage_map
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -421,6 +423,22 @@ elif page == "Incident Reports":
             "Affected Location",
             placeholder="Enter city, area or village"
         )
+        
+        latitude = st.number_input(
+            "Latitude",
+            min_value=-90.0,
+            max_value=90.0,
+            value=12.9141,
+            format="%.6f"
+        )
+
+        longitude = st.number_input(
+            "Longitude",
+            min_value=-180.0,
+            max_value=180.0,
+            value=74.8560,
+            format="%.6f"
+        )
 
         description = st.text_area(
             "Incident Description",
@@ -468,7 +486,9 @@ elif page == "Incident Reports":
                         location,
                         description,
                         affected_people,
-                        severity
+                        severity,
+                        latitude,
+                        longitude
                     )
 
                     st.success(
@@ -565,9 +585,113 @@ elif page == "Incident Reports":
             "No incidents registered yet. Submit your first report above."
         )
 
+
 elif page == "Damage Map":
-    st.title("Geographic Damage Map")
-    st.info("Interactive disaster location mapping will be implemented here.")
+
+    st.title("🗺️ Geographic Disaster Damage Map")
+
+    st.write(
+        "Visualize reported disaster locations "
+        "and their severity levels."
+    )
+
+    st.divider()
+
+    # Retrieve incidents from SQLite
+
+    incidents = get_incidents()
+
+    if incidents:
+
+        # Keep only incidents with coordinates
+
+        mapped_incidents = [
+            incident for incident in incidents
+            if incident.get("latitude") is not None
+            and incident.get("longitude") is not None
+        ]
+
+        # Dashboard statistics
+
+        col1, col2, col3 = st.columns(3)
+
+        col1.metric(
+            "Total Reports",
+            len(incidents)
+        )
+
+        col2.metric(
+            "Mapped Locations",
+            len(mapped_incidents)
+        )
+
+        col3.metric(
+            "Awaiting Coordinates",
+            len(incidents) - len(mapped_incidents)
+        )
+
+        st.divider()
+
+        st.subheader("Incident Location Map")
+
+        st.markdown(
+            """
+            🔴 Critical &nbsp;&nbsp;
+            🟠 High &nbsp;&nbsp;
+            🟡 Moderate &nbsp;&nbsp;
+            🟢 Low
+            """
+        )
+
+        if mapped_incidents:
+
+            damage_map = create_damage_map(
+                mapped_incidents
+            )
+
+            st_folium(
+                damage_map,
+                width=None,
+                height=600,
+                key="disaster_map"
+            )
+
+        else:
+
+            st.warning(
+                "No incidents with coordinates found. "
+                "Register a new incident with valid coordinates."
+            )
+
+        # Display incident details
+
+        st.subheader("Incident Location Details")
+
+        if mapped_incidents:
+
+            map_data = pd.DataFrame(mapped_incidents)
+
+            st.dataframe(
+                map_data[
+                    [
+                        "title",
+                        "location",
+                        "severity",
+                        "latitude",
+                        "longitude",
+                        "status"
+                    ]
+                ],
+                use_container_width=True,
+                hide_index=True
+            )
+
+    else:
+
+        st.info(
+            "No incident reports found. "
+            "Register an incident to populate the map."
+        )
 
 elif page == "Recovery Planning":
     st.title("Recovery Planning")

@@ -42,19 +42,38 @@ def init_db():
 
         )
     """)
+    columns = [
+        row["name"]
+        for row in conn.execute(
+            "PRAGMA table_info(incidents)"
+        ).fetchall()
+    ]
+
+    if "latitude" not in columns:
+        conn.execute(
+            "ALTER TABLE incidents ADD COLUMN latitude REAL"
+        )
+
+    if "longitude" not in columns:
+        conn.execute(
+            "ALTER TABLE incidents ADD COLUMN longitude REAL"
+        )
 
     conn.commit()
     conn.close()
 
 
 # Add new incident
+
 def add_incident(
     title,
     disaster_type,
     location,
     description,
     affected_people,
-    severity
+    severity,
+    latitude,
+    longitude
 ):
 
     conn = get_connection()
@@ -68,9 +87,11 @@ def add_incident(
             affected_people,
             severity,
             status,
-            created_at
+            created_at,
+            latitude,
+            longitude
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         title,
         disaster_type,
@@ -79,12 +100,13 @@ def add_incident(
         affected_people,
         severity,
         "Pending",
-        datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        latitude,
+        longitude
     ))
 
     conn.commit()
     conn.close()
-
 
 # Retrieve all incidents
 def get_incidents():
