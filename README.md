@@ -121,3 +121,9 @@ Hackathon Prototype – Under Development.
 ---
 
 **GitHub Repository:** [ResQVision](https://github.com/baddanadavid-ctrl/ResQVision)
+
+## 🌐 Live Demo
+
+Experience ResQVision here:
+
+[🚀 Launch ResQVision Web App](https://resqvision-ksdz6fcerzj4rqk7nhs2hq.streamlit.app/)
