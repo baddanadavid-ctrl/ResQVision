@@ -1144,110 +1144,28 @@ elif page == "What-If Resource Simulator":
             
             st.divider()
 
-            st.subheader("✏️ Manual Resource Allocation")
+            st.subheader("📊 Automatic Resource Allocation Summary")
 
-            if "manual_allocation_df" not in st.session_state:
-                st.session_state.manual_allocation_df = allocation_df.copy()
-
-            manual_df = st.session_state.manual_allocation_df.copy()
-            edited_values = []
-
-            with st.form("manual_allocation_form"):
-                for index, row in manual_df.iterrows():
-                    with st.expander(
-                        f"Adjust resources - {row['location']}"
-                    ):
-                        teams = st.number_input(
-                            "Rescue Teams",
-                            min_value=0,
-                            max_value=int(rescue_teams),
-                            value=int(row["rescue_teams"]),
-                            key=f"manual_teams_{row['incident_id']}"
-                        )
-
-                        medical = st.number_input(
-                            "Medical Kits",
-                            min_value=0,
-                            max_value=int(medical_kits),
-                            value=int(row["medical_kits"]),
-                            key=f"manual_medical_{row['incident_id']}"
-                        )
-
-                        food = st.number_input(
-                            "Food Packages",
-                            min_value=0,
-                            max_value=int(food_packages),
-                            value=int(row["food_packages"]),
-                            key=f"manual_food_{row['incident_id']}"
-                        )
-
-                        edited_values.append(
-                            (index, teams, medical, food)
-                        )
-
-                apply_manual = st.form_submit_button("Apply Manual Allocation")
-
-            if apply_manual:
-                for index, teams, medical, food in edited_values:
-                    manual_df.loc[index, ["rescue_teams", "medical_kits", "food_packages"]] = (
-                        teams, medical, food
-                    )
-
-                st.session_state.manual_allocation_df = manual_df.copy()
-
-                st.success("Manual allocations applied successfully!")
-
-            total_manual_teams = int(manual_df["rescue_teams"].sum())
-            total_manual_medical = int(manual_df["medical_kits"].sum())
-            total_manual_food = int(manual_df["food_packages"].sum())
-
-            st.subheader("Manual Allocation Validation")
-
-            if (
-                total_manual_teams <= rescue_teams
-                and total_manual_medical <= medical_kits
-                and total_manual_food <= food_packages
-            ):
-                st.success("Manual allocation is within available resources.")
-            else:
-                st.error("Resource limits exceeded. Reduce the manual allocations.")
-
-
-            st.subheader("Resource Distribution")
+            total_teams = int(allocation_df["rescue_teams"].sum())
+            total_medical = int(allocation_df["medical_kits"].sum())
+            total_food = int(allocation_df["food_packages"].sum())
 
             col1, col2, col3 = st.columns(3)
 
-            col1.metric(
-                "Teams Allocated",
-                int(manual_df["rescue_teams"].sum()),
-                f"Out of {rescue_teams}"
-            )
+            col1.metric("Rescue Teams Allocated", total_teams)
+            col2.metric("Medical Kits Allocated", total_medical)
+            col3.metric("Food Packages Allocated", total_food)
 
-            col2.metric(
-                "Medical Kits Allocated",
-                int(manual_df["medical_kits"].sum()),
-                f"Out of {medical_kits}"
-            )
+            st.subheader("Resource Distribution by Location")
 
-            col3.metric(
-                "Food Packages Allocated",
-                int(manual_df["food_packages"].sum()),
-                f"Out of {food_packages}"
-            )
-
-            st.subheader("Resource Allocation Chart")
-
-          
-            
-            manual_df["area_label"] = manual_df.apply(
+            allocation_df["area_label"] = allocation_df.apply(
                 lambda row: f"{row['location']} - Incident {row['incident_id']}",
                 axis=1
             )
 
-            chart_df = manual_df.set_index("area_label")[
+            chart_df = allocation_df.set_index("area_label")[
                 ["rescue_teams", "medical_kits", "food_packages"]
             ]
-
 
             st.bar_chart(chart_df)
 
