@@ -107,7 +107,7 @@ The main objective of ResQVision is to demonstrate how software technologies can
 - More advanced resource optimization algorithms.
 - Integration with external emergency response systems.
 
-## 👨‍💻 Original Developer
+## 👨‍💻 Original Developers
 
 - **Akshith**
 - **David**
