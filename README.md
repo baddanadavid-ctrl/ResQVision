@@ -109,10 +109,7 @@ The main objective of ResQVision is to demonstrate how software technologies can
 
 ## 👨‍💻 Original Developer
 
-**Akshith** – Original Project Developer
-
-## 👥 Contributors
-
+- **Akshith**
 - **David**
 - **Neeraj**
 - **Pranav**
