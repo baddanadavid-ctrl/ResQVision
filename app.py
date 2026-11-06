@@ -1,9 +1,16 @@
-
 import streamlit as st
 import pandas as pd
 import plotly.express as px
 import cv2
+
 from image_analysis import analyze_images
+from priority import calculate_priority
+
+from database import (
+    add_incident,
+    get_incidents,
+    update_incident_status
+)
 
 # PAGE CONFIGURATION
 st.set_page_config(
@@ -188,11 +195,9 @@ if page == "Dashboard":
     )
 
 # OTHER PAGES
-
-
 elif page == "Image Analysis":
 
-    st.title("🛰️ Disaster Image Analysis")
+    st.title("Disaster Image Analysis")
 
     st.write(
         "Upload pre-disaster and post-disaster images "
@@ -200,6 +205,26 @@ elif page == "Image Analysis":
     )
 
     st.divider()
+
+    # INCIDENT INFORMATION
+
+    st.subheader("Incident Information")
+
+    affected_people = st.number_input(
+        "Estimated affected population",
+        min_value=0,
+        max_value=100000,
+        value=50,
+        step=10
+    )
+
+    infrastructure_affected = st.checkbox(
+        "Critical infrastructure affected"
+    )
+
+    st.divider()
+
+    # IMAGE UPLOAD
 
     col1, col2 = st.columns(2)
 
@@ -239,8 +264,10 @@ elif page == "Image Analysis":
 
     st.divider()
 
+    # IMAGE ANALYSIS
+
     if st.button(
-        "🔍 Analyze Disaster Images",
+        "Analyze Disaster Images",
         use_container_width=True
     ):
 
@@ -256,12 +283,62 @@ elif page == "Image Analysis":
 
                 st.success("Image comparison completed!")
 
-                st.subheader("Visual Change Analysis")
-
                 st.metric(
                     "Visual Change Percentage",
                     f"{score:.2f}%"
                 )
+
+                # PRIORITY CALCULATION
+
+                result = calculate_priority(
+                    score,
+                    affected_people,
+                    infrastructure_affected
+                )
+
+                st.divider()
+
+                st.subheader("Disaster Priority Assessment")
+
+                col3, col4 = st.columns(2)
+
+                with col3:
+                    st.metric(
+                        "Priority Score",
+                        f"{result['score']}/100"
+                    )
+
+                with col4:
+                    st.metric(
+                        "Incident Priority",
+                        result["priority"]
+                    )
+
+                st.subheader("Score Breakdown")
+
+                st.write(
+                    f"Visual Change Score: "
+                    f"{result['visual_score']}/50"
+                )
+
+                st.write(
+                    f"Population Score: "
+                    f"{result['population_score']}/30"
+                )
+
+                st.write(
+                    f"Infrastructure Score: "
+                    f"{result['infrastructure_score']}/20"
+                )
+
+                st.info(
+                    f"Recommended Action: "
+                    f"{result['recommendation']}"
+                )
+
+                # DISPLAY RESULTS
+
+                st.subheader("Visual Comparison")
 
                 result1, result2 = st.columns(2)
 
@@ -285,14 +362,14 @@ elif page == "Image Analysis":
 
                 st.image(
                     mask,
-                    caption="White regions indicate detected visual differences",
+                    caption="White regions show visual differences",
                     use_container_width=True
                 )
 
                 st.warning(
-                    "This result represents visual differences, "
-                    "not confirmed structural damage. "
-                    "Human inspection is required."
+                    "Visual differences do not confirm "
+                    "structural damage. Human inspection "
+                    "is required."
                 )
 
             except Exception as e:
@@ -305,9 +382,188 @@ elif page == "Image Analysis":
                 "Please upload both before and after images."
             )
 
+
+
 elif page == "Incident Reports":
-    st.title("Incident Reporting")
-    st.info("Disaster incident reporting will be implemented here.")
+
+    st.title("🚨 Incident Reporting System")
+
+    st.write(
+        "Register, manage and monitor disaster incidents."
+    )
+
+    st.divider()
+
+    # NEW INCIDENT FORM
+
+    st.subheader("Register New Incident")
+
+    with st.form("incident_form"):
+
+        title = st.text_input(
+            "Incident Title",
+            placeholder="Example: Heavy flooding in residential area"
+        )
+
+        disaster_type = st.selectbox(
+            "Disaster Type",
+            [
+                "Flood",
+                "Earthquake",
+                "Fire",
+                "Landslide",
+                "Cyclone",
+                "Other"
+            ]
+        )
+
+        location = st.text_input(
+            "Affected Location",
+            placeholder="Enter city, area or village"
+        )
+
+        description = st.text_area(
+            "Incident Description",
+            placeholder="Describe the disaster and its impact..."
+        )
+
+        affected_people = st.number_input(
+            "Estimated Affected Population",
+            min_value=0,
+            max_value=100000,
+            value=0,
+            step=10
+        )
+
+        severity = st.selectbox(
+            "Severity Level",
+            [
+                "Critical",
+                "High",
+                "Moderate",
+                "Low"
+            ]
+        )
+
+        submitted = st.form_submit_button(
+            "Submit Incident Report",
+            use_container_width=True
+        )
+
+        if submitted:
+
+            if not title.strip() or not location.strip():
+
+                st.error(
+                    "Please enter both incident title and location."
+                )
+
+            else:
+
+                try:
+
+                    add_incident(
+                        title,
+                        disaster_type,
+                        location,
+                        description,
+                        affected_people,
+                        severity
+                    )
+
+                    st.success(
+                        "Incident report submitted successfully!"
+                    )
+
+                    st.rerun()
+
+                except Exception as e:
+
+                    st.error(f"Database error: {e}")
+
+    st.divider()
+
+    # DISPLAY SAVED INCIDENTS
+
+    st.subheader("Registered Incidents")
+
+    incidents = get_incidents()
+
+    if incidents:
+
+        st.metric(
+            "Total Registered Incidents",
+            len(incidents)
+        )
+
+        for incident in incidents:
+
+            with st.expander(
+                f"#{incident['id']} - {incident['title']}"
+            ):
+
+                st.write(
+                    f"**Disaster Type:** {incident['disaster_type']}"
+                )
+
+                st.write(
+                    f"**Location:** {incident['location']}"
+                )
+
+                st.write(
+                    f"**Description:** {incident['description']}"
+                )
+
+                st.write(
+                    f"**Affected People:** {incident['affected_people']}"
+                )
+
+                st.write(
+                    f"**Severity:** {incident['severity']}"
+                )
+
+                st.write(
+                    f"**Reported On:** {incident['created_at']}"
+                )
+
+                st.write(
+                    f"**Current Status:** {incident['status']}"
+                )
+
+                new_status = st.selectbox(
+                    "Update Incident Status",
+                    [
+                        "Pending",
+                        "Under Investigation",
+                        "Resolved"
+                    ],
+                    index=[
+                        "Pending",
+                        "Under Investigation",
+                        "Resolved"
+                    ].index(incident["status"]),
+                    key=f"status_{incident['id']}"
+                )
+
+                if st.button(
+                    "Update Status",
+                    key=f"update_{incident['id']}"
+                ):
+
+                    update_incident_status(
+                        incident["id"],
+                        new_status
+                    )
+
+                    st.success("Incident status updated!")
+
+                    st.rerun()
+
+    else:
+
+        st.info(
+            "No incidents registered yet. Submit your first report above."
+        )
 
 elif page == "Damage Map":
     st.title("Geographic Damage Map")
